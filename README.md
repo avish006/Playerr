@@ -6,9 +6,9 @@ I built it to make listening while working feel more personal and convenient. On
 
 ## Demo
 
-[Watch the live OBS demo](https://chatgpt.com/library?file_id=libfile_10e98bad7ed4819197702790f023d193&account_id=personal)
+https://github.com/user-attachments/assets/e1d0f6ee-6ec9-4e8a-a313-ffa682d47fc3
 
-A live OBS walkthrough showing Spotify Web Player in both layouts, with narration and optional English captions.
+A live OBS walkthrough showing Spotify Web Player in both layouts, with narration and optional English captions. The app appears under its original name, Vinyl Float.
 
 ## Features
 
