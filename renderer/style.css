@@ -1,0 +1,82 @@
+html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; user-select: none; cursor: default; }
+button { font: inherit; }
+
+/* registered so the colours cross-fade between songs */
+@property --accent { syntax: '<color>'; inherits: true; initial-value: #1ed760; }
+@property --ambient { syntax: '<color>'; inherits: true; initial-value: transparent; }
+
+#app {
+  --s: 1; --accent: #1ed760; --ambient: transparent; --spin: 7s;
+  transition: --accent .8s ease, --ambient 1.2s ease;
+  position: absolute; right: 0; top: 0; width: 400px; height: 160px;
+  transform: scale(var(--s)); transform-origin: 100% 0;
+  display: flex; flex-direction: row-reverse; align-items: center;
+  background:
+    radial-gradient(ellipse 96% 132% at 85% 48%, var(--ambient), transparent 82%),
+    rgba(14, 14, 18, .66);
+  border-radius: 22px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .09);
+  color: #f2f3f7; font: 600 13px/1.25 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+.mini #app { width: 160px; background: none; box-shadow: none; }
+.mini #info { display: none; }
+
+/* The trim sits outside the masked disc and only appears in CD-only mode. */
+#record { position: relative; flex: none; width: 140px; height: 140px; margin: 10px; }
+.mini #record::before {
+  content: ""; position: absolute; inset: -1px; border-radius: 50%; pointer-events: none;
+  border: 1px solid color-mix(in srgb, #a098b8 34%, transparent);
+  box-shadow: 0 0 5px color-mix(in srgb, #a098b8 18%, transparent);
+}
+.mini .has-art #record::before {
+  border-color: color-mix(in srgb, var(--accent) 57%, transparent);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--accent) 43%, transparent);
+}
+
+/* --- the CD: art disc spins, reflection and hub stay put like real light --- */
+#cd {
+  position: absolute; inset: 0; border-radius: 50%;
+  -webkit-mask: radial-gradient(circle, transparent 0 9%, #000 9.6%);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+#disc, #art, #grooves, #shine, #hub { position: absolute; inset: 0; border-radius: 50%; }
+#disc { will-change: transform; animation: spin var(--spin) linear infinite; animation-play-state: paused; }
+.playing #disc { animation-play-state: running; }
+#art { background: conic-gradient(#23232b, #3c3c49 25%, #23232b 50%, #34343f 75%, #23232b) center / cover no-repeat; }  /* placeholder until the cover loads, asymmetric so the spin is visible */
+#grooves { background: repeating-radial-gradient(circle, transparent 0 2px, rgba(0, 0, 0, .10) 2.5px 3px); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .16); }
+#shine { background: conic-gradient(from 25deg, transparent 0 7%, rgba(255, 255, 255, .30) 13%, transparent 21% 50%, rgba(255, 255, 255, .22) 57%, transparent 65%); }
+#hub { background: radial-gradient(circle, transparent 0 9.6%, rgba(222, 226, 236, .62) 10% 19%, rgba(0, 0, 0, .28) 19.5% 21%, transparent 21.5%); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- info column --- */
+#info { flex: 1; min-width: 0; padding: 0 4px 0 22px; display: flex; flex-direction: column; gap: 3px; }
+#title { font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#artist { font-size: 12px; font-weight: 400; opacity: .62; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#bar { display: flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 10px; font-weight: 400; opacity: .8; font-variant-numeric: tabular-nums; }
+#track { position: relative; flex: 1; height: 16px; cursor: pointer; }
+#rail { position: absolute; left: 0; right: 0; top: 6px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .18); }
+#fill { position: relative; width: 0; height: 100%; border-radius: 2px; background: var(--accent); }
+#fill::after { content: ""; position: absolute; right: -5px; top: -3px; width: 10px; height: 10px; border-radius: 50%; background: #fff; opacity: 0; transition: opacity .15s; }
+#track:hover #fill::after { opacity: 1; }
+
+#ctrl { position: relative; display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 2px; }
+#ctrl button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: none; color: #f2f3f7; opacity: .8; cursor: pointer; transition: opacity .15s, transform .15s; }
+#ctrl button:hover { opacity: 1; transform: scale(1.12); }
+#ctrl svg { width: 18px; height: 18px; fill: currentColor; }
+#pp { width: 38px !important; height: 38px !important; background: #fff !important; color: #111 !important; opacity: 1 !important; }
+#pp svg { width: 20px; height: 20px; }
+.i-pause, .playing .i-play { display: none; }
+.playing .i-pause { display: block; }
+
+#grip { position: absolute; right: 6px; bottom: 6px; width: 14px; height: 14px; cursor: nwse-resize; opacity: 0; transition: opacity .2s;
+  background: linear-gradient(135deg, transparent 0 55%, rgba(255, 255, 255, .7) 55% 62%, transparent 62% 76%, rgba(255, 255, 255, .7) 76% 83%, transparent 83%); }
+#app:hover #grip { opacity: .55; }
+.mini #grip { right: 14px; bottom: 14px; }
+
+/* Keep the main transport controls centered between the repeat buttons. */
+#ctrl .repeat { position: absolute; top: 50%; translate: 0 -50%; width: 28px; height: 28px; }
+#ctrl [data-c="repeat-all"] { left: 0; }
+#ctrl [data-c="repeat-one"] { right: 0; }
+#ctrl .repeat[aria-pressed="true"] { opacity: 1; color: var(--accent); }
+#ctrl .repeat:disabled { opacity: .32; cursor: default; transform: none; }
+#ctrl .repeat span { position: absolute; font: 800 8px/1 "Segoe UI", sans-serif; }

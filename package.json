@@ -1,0 +1,13 @@
+{
+  "name": "vinyl-float-standalone",
+  "version": "2.0.0",
+  "description": "An extension-free Windows desktop music overlay",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^39.0.0"
+  },
+  "productName": "Vinyl Float Standalone"
+}

@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div id="record">
+    <div id="cd">
+      <div id="disc"><div id="art"></div><div id="grooves"></div></div>
+      <div id="shine"></div>
+      <div id="hub"></div>
+    </div>
+  </div>
+  <div id="info">
+    <div id="title">Starting…</div>
+    <div id="artist">Looking for a media session</div>
+    <div id="bar">
+      <span id="cur">0:00</span>
+      <div id="track"><div id="rail"><div id="fill"></div></div></div>
+      <span id="dur">0:00</span>
+    </div>
+    <div id="ctrl">
+      <button class="repeat" data-c="repeat-all" aria-label="Repeat" aria-pressed="false" title="Repeat · Select the Spotify tab to enable repeat" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z"/></svg></button>
+      <button data-c="prev" title="Previous"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"/></svg></button>
+      <button id="pp" data-c="toggle" title="Play / pause">
+        <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        <svg class="i-pause" viewBox="0 0 24 24"><path d="M6 4h4.5v16H6zM13.5 4H18v16h-4.5z"/></svg>
+      </button>
+      <button data-c="next" title="Next"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z"/></svg></button>
+      <button class="repeat" data-c="repeat-one" aria-label="Repeat One" aria-pressed="false" title="Repeat One · Select the Spotify tab to enable repeat" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z"/></svg><span aria-hidden="true">1</span></button>
+    </div>
+  </div>
+  <div id="grip" title="Drag to resize"></div>
+</div>
+<script src="renderer.js"></script>
+</body>
+</html>
