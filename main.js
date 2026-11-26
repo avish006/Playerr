@@ -1,15 +1,19 @@
-const { app, BrowserWindow, Tray, Menu, screen, ipcMain, globalShortcut, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, screen, ipcMain, globalShortcut, nativeImage, shell } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
 // Design size (px at scale 1). The whole UI scales with the window.
-const DESIGN = { full: { w: 400, h: 160 }, mini: { w: 160, h: 160 } };
+const DESIGN = { full: { w: 400, h: 184 }, mini: { w: 160, h: 160 } };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 let cfg = { scale: 1, mini: false, opacity: 1, x: null, y: null };
-let win, lockWin, tray, helper, drag, quitting = false;
+let win, lockWin, btWin, tray, helper, btHelper, drag, quitting = false;
 let locked = true;
 let lastMediaState = null;
+let lastBtState = null;
+let lastAccent = '#1ed760';
+let btPollTimer = null;
+let btClosedAt = 0;
 let pendingMini = null, miniRevision = 0;
 const cfgFile = () => path.join(app.getPath('userData'), 'config.json');
 const save = () => { try { fs.writeFileSync(cfgFile(), JSON.stringify(cfg)); } catch {} };
@@ -36,6 +40,7 @@ function place(anchor) {
 }
 function toggleMini() {
   stopDrag();
+  closeBtPopup();
   pendingMini = { mini: !(pendingMini?.mini ?? cfg.mini), revision: ++miniRevision };
   win.webContents.send('prepare-mini', pendingMini);
 }
@@ -85,7 +90,21 @@ function createLockButton() {
 }
 
 function buildMenu() {
+  const muted = Boolean(lastMediaState?.muted);
+  const volLabel = lastMediaState?.vol != null ? `Volume (${muted ? 'Muted' : lastMediaState.vol + '%'})` : 'Volume';
+  const connectedBt = (lastBtState?.devices || []).filter(d => d.connected).map(d => d.name);
+  const btLabel = connectedBt.length ? `Bluetooth (${connectedBt[0]})` : (lastBtState?.radio === 'off' ? 'Bluetooth (Off)' : 'Bluetooth…');
   return Menu.buildFromTemplate([
+    { label: volLabel, submenu: [
+        { label: muted ? 'Unmute' : 'Mute', click: () => sendHelperCmd('mute') },
+        { type: 'separator' },
+        ...[100, 75, 50, 25, 10].map(v => ({
+          label: v + '%', type: 'radio', checked: !muted && Math.abs((lastMediaState?.vol ?? -1) - v) <= 5,
+          click: () => sendHelperCmd('vol ' + v)
+        }))
+      ] },
+    { label: btLabel, click: () => toggleBtPopup() },
+    { type: 'separator' },
     { label: 'Opacity', submenu: [100, 85, 70, 55, 40].map(p => ({
         label: p + '%', type: 'radio', checked: Math.round(cfg.opacity * 100) === p,
         click: () => { cfg.opacity = p / 100; win.setOpacity(cfg.opacity); lockWin.setOpacity(cfg.opacity); save(); } })) },
@@ -95,6 +114,66 @@ function buildMenu() {
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() },
   ]);
+}
+
+function sendHelperCmd(line) {
+  if (helper?.stdin.writable) helper.stdin.write(line + '\n');
+}
+
+function sendBtCmd(line) {
+  if (btHelper?.stdin.writable) btHelper.stdin.write(line + '\n');
+}
+
+function btPopupBounds() {
+  const b = win.getBounds();
+  const display = screen.getDisplayMatching(b);
+  const wa = display.workArea;
+  const w = 286, h = 280, gap = 8;
+  const x = clamp(b.x, wa.x + 8, wa.x + wa.width - w - 8);
+  const fitsAbove = b.y - h - gap >= wa.y + 4;
+  const y = fitsAbove ? b.y - h - gap : Math.min(wa.y + wa.height - h - 8, b.y + b.height + gap);
+  return { x: Math.round(x), y: Math.round(y), width: w, height: h };
+}
+
+function closeBtPopup() {
+  if (btPollTimer) { clearInterval(btPollTimer); btPollTimer = null; }
+  if (btWin && !btWin.isDestroyed()) {
+    btClosedAt = Date.now();
+    btWin.close();
+  }
+  btWin = null;
+}
+
+function toggleBtPopup(accent) {
+  if (typeof accent === 'string' && accent) lastAccent = accent;
+  if (btWin && !btWin.isDestroyed()) { closeBtPopup(); return; }
+  // Prevent click-blur-then-click race when clicking the player's Bluetooth button to close.
+  if (Date.now() - btClosedAt < 220) return;
+  btWin = new BrowserWindow({
+    ...btPopupBounds(), parent: win, show: false, transparent: true, frame: false,
+    hasShadow: false, skipTaskbar: true, focusable: true, resizable: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
+  });
+  btWin.setAlwaysOnTop(true, 'screen-saver');
+  btWin.webContents.on('did-finish-load', () => {
+    if (!btWin || btWin.isDestroyed()) return;
+    btWin.webContents.send('bt-theme', { accent: lastAccent });
+    if (lastBtState) btWin.webContents.send('bt-state', lastBtState);
+  });
+  btWin.once('ready-to-show', () => {
+    if (!btWin || btWin.isDestroyed()) return;
+    btWin.show();
+    btWin.focus();
+  });
+  btWin.on('blur', () => closeBtPopup());
+  btWin.on('closed', () => {
+    if (btPollTimer) { clearInterval(btPollTimer); btPollTimer = null; }
+    btClosedAt = Date.now();
+    btWin = null;
+  });
+  btWin.loadFile(path.join(__dirname, 'renderer', 'bluetooth.html'));
+  sendBtCmd('list');
+  btPollTimer = setInterval(() => sendBtCmd('list'), 8000);
 }
 
 function createWindow() {
@@ -115,12 +194,13 @@ function createWindow() {
   win.setIgnoreMouseEvents(locked);
   win.setOpacity(cfg.opacity);
   win.webContents.setVisualZoomLevelLimits(1, 1);
-  win.on('move', positionLockButton);
-  win.on('resize', positionLockButton);
+  win.on('move', () => { positionLockButton(); if (btWin && !btWin.isDestroyed()) btWin.setBounds(btPopupBounds()); });
+  win.on('resize', () => { positionLockButton(); if (btWin && !btWin.isDestroyed()) btWin.setBounds(btPopupBounds()); });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.webContents.on('did-finish-load', () => {
     win.webContents.send('layout', { scale: cfg.scale, mini: cfg.mini });
     if (lastMediaState) win.webContents.send('state', lastMediaState);
+    if (lastBtState) win.webContents.send('bt-state', lastBtState);
   });
   createLockButton();
 }
@@ -146,9 +226,27 @@ ipcMain.on('toggle-lock', event => { if (event.sender === lockWin?.webContents) 
 ipcMain.on('menu', () => buildMenu().popup({ window: win }));
 ipcMain.on('cmd', (event, line) => {
   if (event.sender !== win?.webContents || typeof line !== 'string') return;
-  if (helper?.stdin.writable && /^(toggle|next|prev|repeat-(all|one)|seek \d+)$/.test(line)) {
-    helper.stdin.write(line + '\n');
+  if (/^(toggle|next|prev|repeat-(all|one)|seek \d+|vol (?:100|[1-9]?\d)|mute)$/.test(line)) {
+    sendHelperCmd(line);
   }
+});
+ipcMain.on('bt-toggle', (event, accent) => {
+  if (event.sender !== win?.webContents) return;
+  toggleBtPopup(accent);
+});
+ipcMain.on('bt-cmd', (event, line) => {
+  if (event.sender !== btWin?.webContents || typeof line !== 'string') return;
+  if (/^(list|radio (on|off)|(connect|disconnect) [0-9A-Fa-f]{12})$/.test(line)) {
+    sendBtCmd(line);
+  }
+});
+ipcMain.on('bt-open-settings', event => {
+  if (event.sender !== btWin?.webContents) return;
+  shell.openExternal('ms-settings:bluetooth').catch(() => {});
+});
+ipcMain.on('bt-close', event => {
+  if (event.sender !== btWin?.webContents) return;
+  closeBtPopup();
 });
 
 function startHelper() {
@@ -166,9 +264,13 @@ function startHelper() {
       try {
         const state = JSON.parse(line);
         if (!state || typeof state !== 'object') continue;
+        const prevAudioOut = lastMediaState?.audioOut;
         const previousArt = state.trackKey === lastMediaState?.trackKey ? lastMediaState?.art : null;
         lastMediaState = state.none ? state : { art: previousArt ?? null, ...state };
         win.webContents.send('state', state);
+        if (state.audioOut !== undefined && state.audioOut !== prevAudioOut) {
+          sendBtCmd('list');
+        }
       } catch {}
     }
   });
@@ -187,6 +289,34 @@ function startHelper() {
   helper.on('close', () => { helper = null; if (!quitting) setTimeout(startHelper, 2000); });
 }
 
+function startBtHelper() {
+  if (process.platform !== 'win32') return;
+  btHelper = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+    '-File', path.join(__dirname, 'bluetooth.ps1')], { windowsHide: true });
+  let buf = '';
+  btHelper.stdout.setEncoding('utf8');
+  btHelper.stdout.on('data', chunk => {
+    buf += chunk;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line) continue;
+      try {
+        const bt = JSON.parse(line);
+        if (!bt || typeof bt !== 'object') continue;
+        lastBtState = bt;
+        if (win && !win.isDestroyed()) win.webContents.send('bt-state', bt);
+        if (btWin && !btWin.isDestroyed()) btWin.webContents.send('bt-state', bt);
+      } catch {}
+    }
+  });
+  btHelper.stdin.on('error', () => {});
+  btHelper.stderr.setEncoding('utf8');
+  btHelper.stderr.on('data', d => console.error('[bt]', d));
+  btHelper.on('error', error => console.error('[bt]', error.message));
+  btHelper.on('close', () => { btHelper = null; if (!quitting) setTimeout(startBtHelper, 3000); });
+}
+
 if (!app.requestSingleInstanceLock()) app.quit();
 app.whenReady().then(() => {
   try {
@@ -200,6 +330,12 @@ app.whenReady().then(() => {
   tray.on('right-click', () => tray.popUpContextMenu(buildMenu()));
   globalShortcut.register('Control+Alt+L', toggleLock);
   startHelper();
+  startBtHelper();
 });
-app.on('will-quit', () => { quitting = true; globalShortcut.unregisterAll(); if (helper) { helper.stdin.end(); helper.kill(); } });
+app.on('will-quit', () => {
+  quitting = true;
+  globalShortcut.unregisterAll();
+  if (helper) { helper.stdin.end(); helper.kill(); }
+  if (btHelper) { btHelper.stdin.end(); btHelper.kill(); }
+});
 app.on('window-all-closed', () => app.quit());

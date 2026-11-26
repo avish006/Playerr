@@ -1,0 +1,175 @@
+html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; user-select: none; }
+button { font: inherit; color: inherit; }
+
+#panel {
+  --accent: #1ed760;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 8px;
+  border-radius: 16px;
+  background: rgba(16, 16, 21, .92);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .11);
+  color: #f2f3f7;
+  font: 500 12px/1.3 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+
+#head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+}
+
+#head-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.bt-mark { width: 15px; height: 15px; fill: var(--accent); }
+
+#head-right { display: flex; align-items: center; gap: 8px; }
+
+#refresh {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  opacity: .72;
+  cursor: pointer;
+  transition: opacity .15s, background .15s, transform .2s;
+}
+#refresh:hover { opacity: 1; background: rgba(255, 255, 255, .09); }
+#refresh.spinning svg { animation: spin .7s linear infinite; }
+#refresh svg { width: 15px; height: 15px; fill: currentColor; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#radio-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .18);
+  cursor: pointer;
+  transition: background .18s;
+}
+#radio-toggle[aria-checked="true"] { background: var(--accent); }
+#radio-toggle:disabled { opacity: .4; cursor: default; }
+#radio-toggle .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .18s;
+}
+#radio-toggle[aria-checked="true"] .knob { transform: translateX(16px); }
+
+#msg {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 107, 107, .14);
+  color: #ffb3b3;
+  font-size: 11px;
+}
+
+#list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 2px;
+}
+#list::-webkit-scrollbar { width: 4px; }
+#list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .18); border-radius: 2px; }
+
+.dev {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(255, 255, 255, .06);
+}
+.dev.connected {
+  background: color-mix(in srgb, var(--accent) 12%, rgba(255, 255, 255, .04));
+  border-color: color-mix(in srgb, var(--accent) 36%, transparent);
+}
+
+.dev-ico {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: currentColor;
+  opacity: .75;
+}
+.dev.connected .dev-ico { fill: var(--accent); opacity: 1; }
+
+.dev-meta { flex: 1; min-width: 0; }
+.dev-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dev-sub { font-size: 10px; opacity: .62; }
+.dev.connected .dev-sub { color: var(--accent); opacity: .95; }
+
+.dev-act {
+  flex: none;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .12);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, opacity .15s;
+}
+.dev-act:hover:not(:disabled) { background: rgba(255, 255, 255, .2); }
+.dev.connected .dev-act { background: rgba(255, 255, 255, .14); }
+.dev-act:disabled { opacity: .5; cursor: default; }
+
+.empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  opacity: .66;
+  padding: 16px;
+  font-size: 12px;
+}
+
+#foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+}
+#foot button {
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .08);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background .15s;
+}
+#foot button:hover { background: rgba(255, 255, 255, .16); }
+#close-btn { font-weight: 600; }
