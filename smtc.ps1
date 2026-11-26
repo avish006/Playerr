@@ -1,5 +1,5 @@
 # Reads Windows' media session (what Spotify web/desktop publishes) and prints JSON lines.
-# Reads commands from stdin: toggle | next | prev | seek <ms> | repeat-all | repeat-one
+# Reads commands from stdin: toggle | next | prev | seek <ms> | repeat-all | repeat-one | vol <0-100> | mute
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
@@ -32,6 +32,7 @@ function Pick-Session {
   return $current
 }
 . (Join-Path $PSScriptRoot 'spotify-repeat.ps1')
+. (Join-Path $PSScriptRoot 'audio-volume.ps1')
 
 function Read-NativeRepeatMode($info) {
   if ($info.Controls.IsRepeatEnabled) {
@@ -181,35 +182,45 @@ while ($true) {
       $line = $read.Result
       if ($null -eq $line) { break }            # parent closed stdin -> exit
       $read = $stdin.ReadLineAsync()
-      if ($s -and $line) {
+      if ($line) {
         $c = $line.Trim().Split(' ')
         switch ($c[0]) {
-          'repeat-all' { Toggle-Repeat $s 'all' }
-          'repeat-one' { Toggle-Repeat $s 'one' }
-          'toggle' {
-            if (-not (Await ($s.TryTogglePlayPauseAsync()) ([bool]))) {
-              $info = $s.GetPlaybackInfo()
-              if ($info.PlaybackStatus -eq 'Playing' -and $info.Controls.IsPauseEnabled) {
-                $null = Await ($s.TryPauseAsync()) ([bool])
-              } elseif ($info.PlaybackStatus -ne 'Playing' -and $info.Controls.IsPlayEnabled) {
-                $null = Await ($s.TryPlayAsync()) ([bool])
+          'vol'  { Set-MasterVolume ([int]$c[1]); $force = $true }
+          'mute' { Toggle-MasterMute; $force = $true }
+          default {
+            if ($s) {
+              switch ($c[0]) {
+                'repeat-all' { Toggle-Repeat $s 'all' }
+                'repeat-one' { Toggle-Repeat $s 'one' }
+                'toggle' {
+                  if (-not (Await ($s.TryTogglePlayPauseAsync()) ([bool]))) {
+                    $info = $s.GetPlaybackInfo()
+                    if ($info.PlaybackStatus -eq 'Playing' -and $info.Controls.IsPauseEnabled) {
+                      $null = Await ($s.TryPauseAsync()) ([bool])
+                    } elseif ($info.PlaybackStatus -ne 'Playing' -and $info.Controls.IsPlayEnabled) {
+                      $null = Await ($s.TryPlayAsync()) ([bool])
+                    }
+                  }
+                }
+                'next'   { $null = Await ($s.TrySkipNextAsync()) ([bool]) }
+                'prev'   { $null = Await ($s.TrySkipPreviousAsync()) ([bool]) }
+                'seek'   { $null = Await ($s.TryChangePlaybackPositionAsync([long]([double]$c[1] * 10000))) ([bool]) }
               }
+              Start-Sleep -Milliseconds 150
+              $force = $true
             }
           }
-          'next'   { $null = Await ($s.TrySkipNextAsync()) ([bool]) }
-          'prev'   { $null = Await ($s.TrySkipPreviousAsync()) ([bool]) }
-          'seek'   { $null = Await ($s.TryChangePlaybackPositionAsync([long]([double]$c[1] * 10000))) ([bool]) }
         }
-        Start-Sleep -Milliseconds 150
-        $force = $true
       }
     }
     if ($force -or ($tick % 4 -eq 0)) {
+      $audio = Get-AudioState
       if (-not $s) {
         if ($null -ne $artwork.Key) { $artwork = New-ArtworkState }
         $sentTrack = $null
         $sentArt = $null
-        [Console]::Out.WriteLine('{"none":true}')
+        $noneOut = [ordered]@{ none = $true; vol = $audio.vol; muted = $audio.muted; audioOut = $audio.audioOut }
+        [Console]::Out.WriteLine(($noneOut | ConvertTo-Json -Compress))
       } else {
         $props = Await ($s.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
         if (-not $props) { Start-Sleep -Milliseconds 120; $tick++; continue }
@@ -228,7 +239,8 @@ while ($true) {
         $out = [ordered]@{ title = $props.Title; artist = $props.Artist; album = $props.AlbumTitle
                            trackKey = $artwork.Key
                            repeat = Read-RepeatMode $s $info $props.Title
-                           playing = $playing; pos = [math]::Round($pos); dur = [math]::Round($dur) }
+                           playing = $playing; pos = [math]::Round($pos); dur = [math]::Round($dur)
+                           vol = $audio.vol; muted = $audio.muted; audioOut = $audio.audioOut }
         if ($artwork.Key -cne $sentTrack -or $artwork.Art -cne $sentArt) { $out['art'] = $artwork.Art }
         [Console]::Out.WriteLine(($out | ConvertTo-Json -Compress))
         $sentTrack = $artwork.Key

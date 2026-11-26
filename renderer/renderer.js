@@ -1,8 +1,9 @@
 function createOverlay(root, api, layoutElement) {
   const $ = id => root.querySelector('#' + id);
   const app = $('app'), track = $('track'), art = $('art');
+  const volTrack = $('vol-track'), volFill = $('vol-fill'), volPct = $('vol-pct'), muteBtn = $('mute'), btBtn = $('bt-btn');
   let st = { pos: 0, dur: 0, playing: false, at: performance.now() };
-  let scrubbing = false;
+  let scrubbing = false, volScrubbing = false, volLockUntil = 0, currentVol = 0, currentMuted = false, volThrottleAt = 0;
   let currentArt = null, artRequest = 0, artRetry, currentTrack = null;
 
   const fmt = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
@@ -90,8 +91,30 @@ function createOverlay(root, api, layoutElement) {
     }
   }
 
+  function updateVolume(vol, muted, audioOut) {
+    if (typeof vol !== 'number' || Number.isNaN(vol)) return;
+    if (volScrubbing || performance.now() < volLockUntil) return;
+    currentVol = Math.max(0, Math.min(100, Math.round(vol)));
+    currentMuted = Boolean(muted);
+    renderVolume(currentVol, currentMuted, audioOut);
+  }
+
+  function renderVolume(vol, muted, audioOut) {
+    volFill.style.width = vol + '%';
+    volPct.textContent = vol + '%';
+    volTrack.setAttribute('aria-valuenow', String(vol));
+    volTrack.classList.toggle('muted', muted);
+    muteBtn.setAttribute('aria-pressed', String(muted));
+    muteBtn.classList.toggle('vol-muted', muted || vol === 0);
+    muteBtn.classList.toggle('vol-low', !muted && vol > 0 && vol < 50);
+    const devSuffix = audioOut ? ` · ${audioOut}` : '';
+    muteBtn.title = `${muted ? 'Unmute' : 'Mute'} (${vol}%)${devSuffix}`;
+    volTrack.title = `Volume: ${vol}%${devSuffix}`;
+  }
+
   api.onState(s => {
     updateRepeat(s.repeat ?? null);
+    if (s.vol !== undefined) updateVolume(s.vol, s.muted, s.audioOut);
     if (s.error) { $('title').textContent = "Can't read media controls"; $('artist').textContent = s.error; return; }
     if (s.none) {
       $('title').textContent = 'Nothing playing'; $('artist').textContent = 'Play a song in Spotify';
@@ -132,6 +155,29 @@ function createOverlay(root, api, layoutElement) {
 
   // buttons
   root.querySelectorAll('#ctrl button').forEach(b => b.addEventListener('click', () => api.cmd(b.dataset.c)));
+  muteBtn.addEventListener('click', () => {
+    volLockUntil = performance.now() + 260;
+    currentMuted = !currentMuted;
+    renderVolume(currentVol, currentMuted);
+    api.cmd('mute');
+  });
+  btBtn.addEventListener('click', () => {
+    const accent = getComputedStyle(app).getPropertyValue('--accent').trim();
+    api.btToggle(accent);
+  });
+  if (api.onBtState) {
+    api.onBtState(bt => {
+      if (!bt) return;
+      const connected = (bt.devices || []).filter(d => d.connected);
+      const off = bt.radio !== 'on';
+      btBtn.classList.toggle('bt-off', off);
+      btBtn.setAttribute('aria-pressed', String(!off && connected.length > 0));
+      if (bt.radio === 'unavailable') btBtn.title = 'Bluetooth unavailable';
+      else if (off) btBtn.title = 'Bluetooth (Off) · Click to manage';
+      else if (connected.length) btBtn.title = `Bluetooth · ${connected.map(d => d.name).join(', ')}`;
+      else btBtn.title = 'Bluetooth devices';
+    });
+  }
 
   // seek slider (drag to scrub, release to seek)
   const ratio = e => { const r = track.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
@@ -146,8 +192,48 @@ function createOverlay(root, api, layoutElement) {
   });
   function scrub(e) { const r = ratio(e); $('fill').style.width = r * 100 + '%'; $('cur').textContent = fmt(r * st.dur); }
 
+  // volume slider (drag to adjust, wheel over utility bar to step)
+  const volRatio = e => { const r = volTrack.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
+  function applyVol(pct, forceSend) {
+    currentVol = pct;
+    if (pct > 0) currentMuted = false;
+    renderVolume(pct, currentMuted);
+    const now = performance.now();
+    if (forceSend || now - volThrottleAt >= 45) {
+      volThrottleAt = now;
+      api.cmd('vol ' + pct);
+    }
+  }
+  volTrack.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    volScrubbing = true;
+    volTrack.classList.add('dragging');
+    volTrack.setPointerCapture(e.pointerId);
+    applyVol(Math.round(volRatio(e) * 100), true);
+  });
+  volTrack.addEventListener('pointermove', e => {
+    if (volScrubbing) applyVol(Math.round(volRatio(e) * 100), false);
+  });
+  const endVolScrub = e => {
+    if (!volScrubbing) return;
+    volScrubbing = false;
+    volTrack.classList.remove('dragging');
+    volLockUntil = performance.now() + 260;
+    applyVol(Math.round(volRatio(e) * 100), true);
+  };
+  volTrack.addEventListener('pointerup', endVolScrub);
+  volTrack.addEventListener('pointercancel', () => { volScrubbing = false; volTrack.classList.remove('dragging'); });
+  $('util').addEventListener('wheel', e => {
+    if (e.ctrlKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const step = e.deltaY < 0 ? 4 : -4;
+    volLockUntil = performance.now() + 260;
+    applyVol(Math.max(0, Math.min(100, currentVol + step)), true);
+  }, { passive: false });
+
   // drag the window anywhere that isn't a control; double-click toggles CD-only mode
-  const isControl = t => t.closest('button, #track, #grip');
+  const isControl = t => t.closest('button, #track, #vol-track, #grip');
   app.addEventListener('pointerdown', e => {
     if (e.button !== 0 || isControl(e.target)) return;
     app.setPointerCapture(e.pointerId); api.drag('move', e);
